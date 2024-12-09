@@ -1,0 +1,17 @@
+import json
+
+# Open the first JSON file and load data
+with open('XM_XA建筑_FeaturesToJSON.json', 'r') as f:
+    data = json.load(f)
+
+# Extract NAME, lon, and lat from each feature
+locations = {}
+for feature in data['features']:
+    name = feature['attributes']['NAME']
+    lon = feature['attributes']['lon']
+    lat = feature['attributes']['lat']
+    locations[name] = f"{lat},{lon}"
+
+# Write the extracted data into the structure of the second JSON file
+with open('geocoders.json', 'w') as f:
+    json.dump(locations, f, indent=2)

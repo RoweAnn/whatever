@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang='zh' class='notranslate' translate='no'>
+<head>
+  <meta name='google' content='notranslate' />
+  <meta charset='UTF-8'>
+  <meta name='description' content='一个地理空间Web应用程序。'>
+  <meta name='keywords' content='Mapbox,地理空间,GIS,城市治理,3D建筑,'>
+  <meta http-equiv='X-UA-Compatible' content='IE=Edge,chrome=1' />  
+  <meta http-equiv='Content-Language' content='zh' />
+  <meta name='viewport' content='width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0' />
+  <title>三维城市治理平台DEMO</title>
+  <link href=css/mapbox-gl.css rel=stylesheet>
+  <script src=js/mapbox-gl.js></script>
+  <script type="text/javascript" src="js/autocomplete.js"></script>
+  <link id='favicon_16x16' rel="icon" href="img/favicon-16x16.ico" type="image/x-icon" sizes="16x16">
+  <link id='favicon_32x32' rel="icon" href="img/favicon-32x32.ico" type="image/x-icon" sizes="32x32">
+  <link id='favicon_48x48' rel="icon" href="img/favicon-48x48.ico" type="image/x-icon" sizes="48x48">
+  <link href=css/custom.css rel=stylesheet>
+  <style>
+    #title-container {
+      text-align: center;
+      padding-top: 20px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000; /* Ensure title is on top of map */
+    }
+    #title {
+      color: #00FFFF;
+    }
+    .pane {
+      z-index: 1100; /* Ensure the search bar is on top */
+    }
+  </style>
+</head>
+<body>
+  <div id="title-container">
+    <h1 id="title">三维城市治理平台</h1>
+  </div>
+  <!-- 搜索栏 -->
+  <div class="pane" style="position: absolute; top: 120px; left: 20px;">
+    <form onsubmit="return!1" class="pure-form">
+      <table>
+        <tr>
+          <td><button id="resetMap" type="button" class="btn btn-sm btn-outline-dark">↺</button></td>
+          <td><small>(Reset)</small></td>
+          <td style="font-size:calc(1.85em + 5.5px)" class='emoji pr-2 pl-2'>🧭</td>
+          <td><input id="geocoder" autofocus name="q" placeholder="搜索..." class="form-control form-control-sm"></td>
+        </tr>
+      </table>
+    </form>
+  </div>
+  <!-- 地图容器 -->
+  <div id='map'></div>
+  <script>
+    document.addEventListener('DOMContentLoaded', async() => {
+      console.log('DOMContentLoaded');
+
+      const mapDisplay=document.getElementById('map');
+      const loadingSpinner=document.createElement('div');
+      loadingSpinner.id='loading_gif';
+      loadingSpinner.className='spinner-border';
+      mapDisplay.appendChild(loadingSpinner);  
+
+      function jsonObjToHTMLTable(a) {
+        let t = "";
+        let e = " 聚类" + a.CLUSTER_ID + " 事件点(" + a.postal + ")",
+        o = " 事件ID:  " + a.OBJECTID ,
+        c = " 常住人口:  " + a.常住人口,
+        d = " 非常住人口:  " + a.非常住人口,
+        f = " 企业数目:  " + a.企业数目,
+        g = " POI数目:  " + a.POI数目,
+        p = a.color;
+        return t += "<div>", 
+        t += "<h4 class='emoji' style='white-space:nowrap'>📍 " + e + " <span class='symbol' style='color:" + p + "'>■</span></h4>" +
+     "<h5><span class='emoji'>📅</span> " + o + " <span class='unicode'> </span><br><span class='emoji'>🏢</span> " + c + " <span class='unicode'>   </span><br><span class='emoji'>🏢</span> " + d + " <span class='unicode'>   </span><br><span class='emoji'>🏢</span> " + f + " <span class='unicode'>   </span><br><span class='emoji'>🏢</span> " + g + " <span class='unicode'>   </span></h5>" +
+     "<p>    </p></div>";
+
+      }
+
+      const northEast = [24.5355, 118.2090];
+      const southWest = [24.4335, 118.1109];
+      const mapCenter = [parseFloat((southWest[1] + northEast[1]) / 2), parseFloat((southWest[0] + northEast[0]) / 2)];
+      const defaultPitch = 45;
+      const defaultBearing = -7.6;
+      const defaultZoom = 14.95;
+      const maxZoom = 17;
+      mapboxgl.accessToken = "pk.eyJ1IjoiaHJvbm5hIiwiYSI6ImNsMGo1ODB1bzA3ZHMzY3B3MmxjOThxZHcifQ.KliABdQT-tKWHju3pramog";
+
+      const responseOne = await fetch('data/XMXAinfo.geojson');
+      const hdb_building_info = await responseOne.json();
+
+      const responseThree = await fetch('data/geocoderslyj.json');
+      const geocoders = await responseThree.json();
+
+      mapDisplay.removeChild(loadingSpinner);
+
+      const mapboxMap = new mapboxgl.Map({
+        container: "map",
+        style: "mapbox://styles/mapbox/dark-v11",
+        center: mapCenter,
+        zoom: defaultZoom,
+        pitch: defaultPitch,
+        bearing: defaultBearing,
+        antialias: !0,
+        locale: 'zh-Hans' // 设置地图语言为中文
+      });
+
+      // 添加3D建筑效果
+      mapboxMap.on("load", () => {
+        mapboxMap.addLayer({
+          'id': '3d-buildings',
+          'source': 'composite',
+          'source-layer': 'building',
+          'filter': ['==', 'extrude', 'true'],
+          'type': 'fill-extrusion',
+          'minzoom': 15,
+          'paint': {
+            'fill-extrusion-color': '#aaa',
+            'fill-extrusion-height': [
+              'interpolate', ['linear'], ['zoom'],
+              15, 0,
+              15.05, ['*', ['get', 'height'], 5] // 将高度加倍
+            ],
+            'fill-extrusion-base': [
+              'interpolate', ['linear'], ['zoom'],
+              15, 0,
+              15.05, ['*', ['get', 'min_height'], 2] // 将基底高度加倍
+            ],
+            'fill-extrusion-opacity': .6
+          }
+        });
+
+        const resetMap = document.getElementById("resetMap");
+        resetMap.onclick = function() {
+          mapboxMap.flyTo({
+            center: mapCenter,
+            zoom: defaultZoom,
+            pitch: defaultPitch,
+            bearing: defaultBearing
+          }), document.getElementById("geocoder").value = "";
+        };
+
+        var geocoder = new autoComplete({
+          selector: "#geocoder",
+          minChars: 2,
+          source: function(e, o) {
+            e = e.toLowerCase();
+            var t = Object.keys(geocoders),
+            a = [];
+            for (i = 0; i < t.length; i++) ~t[i].toLowerCase().indexOf(e) && a.push(t[i]);
+            o(a)
+          },
+          onSelect: function(e, o, t) {
+            let a = geocoders[o].split(",");
+            a = [parseFloat(a[1]), parseFloat(a[0])], mapboxMap.flyTo({
+              center: a,
+              zoom: maxZoom,
+              pitch: defaultPitch,
+              bearing: defaultBearing
+            })
+          }
+        });
+        mapboxMap.loadImage("img/invisible_dot.png", (a, t) => {
+          if (a) throw a;
+          mapboxMap.addImage("dot_annotation", t), mapboxMap.addSource("hdb_blks", {
+            type: "geojson",
+            data: hdb_building_info
+          }), mapboxMap.addLayer({
+            id: "hdb-extrusion",
+            type: "fill-extrusion",
+            source: "hdb_blks",
+            paint: {
+              "fill-extrusion-color": ["get", "color"],
+              "fill-extrusion-height": ["*", ["get", "CLUSTER_ID"], 33],
+              "fill-extrusion-opacity": .95
+            }
+          }), mapboxMap.on("click", "hdb-extrusion", a => {
+            const featureProps = a.features[0].properties;
+            const htmlContent = jsonObjToHTMLTable(featureProps);
+            const coordinates = a.lngLat;
+            new mapboxgl.Popup()
+              .setLngLat(coordinates)
+              .setHTML(htmlContent)
+              .addTo(mapboxMap);
+          }), mapboxMap.on("mouseenter", "hdb-extrusion", () => {
+            mapboxMap.getCanvas().style.cursor = "pointer";
+          }), mapboxMap.on("mouseleave", "hdb-extrusion", () => {
+            mapboxMap.getCanvas().style.cursor = "";
+          })
+        });
+        mapboxMap.addControl(new mapboxgl.NavigationControl);
+        
+        mapboxMap.on('render', async() => {
+          await new Promise(resolve => setTimeout(resolve, 10));
+          const mapboxAttribution = document.querySelector('div.mapboxgl-ctrl-bottom-right div.mapboxgl-ctrl-attrib-inner');
+          mapboxAttribution.children[2].href='--';
+          mapboxAttribution.children[2].title='查看Medium资料';
+          mapboxAttribution.children[2].setAttribute('aria-label','查看Medium资料');
+          mapboxAttribution.children[2].innerText='罗莹晶-城市治理参赛人员';
+        });
+      });
+    });
+  </script>
+</body>
+</html>
